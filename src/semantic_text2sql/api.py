@@ -33,6 +33,7 @@ from semantic_text2sql.historical import HistoricalQueryStore
 from semantic_text2sql.hybrid_retrieval import (
     FastEmbedEncoder,
     HybridSchemaRetriever,
+    LightGBMSchemaReranker,
     metadata_requests,
 )
 from semantic_text2sql.llm import (
@@ -132,10 +133,19 @@ def create_app(
     web_root = Path(__file__).resolve().parents[2] / "web"
     if web_root.is_dir():
         app.mount("/static", StaticFiles(directory=web_root), name="static")
+    reranker = None
+    reranker_path = os.environ.get("TEXT2SQL_SCHEMA_RERANKER_MODEL")
+    if os.environ.get("TEXT2SQL_SCHEMA_RERANKER_ENABLED", "false").casefold() == "true":
+        try:
+            reranker = LightGBMSchemaReranker(Path(reranker_path or ""))
+        except (FileNotFoundError, RuntimeError, ValueError) as exc:
+            logger.warning("schema_reranker_disabled=%s", exc)
     hybrid_retriever = HybridSchemaRetriever(
         FastEmbedEncoder(os.environ.get("TEXT2SQL_EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5")),
         max_tables=int(os.environ.get("TEXT2SQL_RETRIEVAL_TABLES", "5")),
         max_columns_per_table=int(os.environ.get("TEXT2SQL_RETRIEVAL_COLUMNS", "5")),
+        reranker=reranker,
+        reranker_pool=int(os.environ.get("TEXT2SQL_SCHEMA_RERANKER_POOL", "30")),
     )
     conversations = ConversationStore()
     chat_jobs: dict[str, dict[str, Any]] = {}
@@ -332,12 +342,20 @@ def create_app(
             )
         else:
             retrieval_started = perf_counter()
+            historical_schema_evidence = history.schema_evidence(
+                pending.resolved_question,
+                request.db_id,
+                schema,
+                top_k=3,
+                min_score=float(os.environ.get("TEXT2SQL_HISTORY_ML_MIN_SCORE", "0.65")),
+            )
             retrieved_schema, retrieval_selection, retrieval_trace = hybrid_retriever.retrieve(
                 pending.resolved_question,
                 request.evidence,
                 schema,
                 database_profile,
                 glossary,
+                historical_schema_evidence,
             )
             retrieval_ms = round((perf_counter() - retrieval_started) * 1_000)
             proposed_tables = retrieval_selection.tables
@@ -384,20 +402,20 @@ def create_app(
             else None
         )
         historical_examples: list[HistoricalExample] = []
-        if os.environ.get("TEXT2SQL_HISTORY_ENABLED", "false").casefold() == "true":
+        if os.environ.get("TEXT2SQL_HISTORY_ENABLED", "true").casefold() == "true":
             historical_examples = [
                 item
                 for item in history.search(
                     pending.resolved_question,
                     request.db_id,
-                    top_k=2,
+                    top_k=1,
                     min_score=float(os.environ.get("TEXT2SQL_HISTORY_MIN_SCORE", "0.85")),
                     bm25_pool=20,
                     semantic_pool=5,
                     candidate_tables=set(context_request.tables),
                 )
                 if validate_sql(item.sql, schema, dialect="sqlite").valid
-            ][:2]
+            ][:1]
         report = resolution_report(pending.resolved_question, contract)
         if context_request.tables:
             proposed_tables = context_request.tables
@@ -425,7 +443,7 @@ def create_app(
         generated = await active_agent.generate(generation_request)
         generation_ms = round((perf_counter() - generation_started) * 1_000)
         historical_attempted = (
-            os.environ.get("TEXT2SQL_HISTORY_ENABLED", "false").casefold() == "true"
+            os.environ.get("TEXT2SQL_HISTORY_ENABLED", "true").casefold() == "true"
         )
         generated = generated.model_copy(
             update={

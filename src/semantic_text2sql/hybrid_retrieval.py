@@ -6,6 +6,7 @@ import math
 import re
 from collections import Counter, deque
 from collections.abc import Iterable, Sequence
+from pathlib import Path
 from typing import Any, Protocol
 
 from semantic_text2sql.glossary import BusinessGlossary, GlossaryTerm
@@ -30,19 +31,74 @@ class DenseEncoder(Protocol):
     def encode(self, texts: Sequence[str]) -> list[list[float]]: ...
 
 
+class SchemaCandidateReranker(Protocol):
+    """Production boundary for an optional candidate-level learning-to-rank model."""
+
+    def score(self, features: list[list[float]]) -> list[float]: ...
+
+
+RERANKER_FEATURES = (
+    "bm25_reciprocal_rank",
+    "embedding_reciprocal_rank",
+    "value_reciprocal_rank",
+    "rrf_score",
+    "is_table",
+    "is_primary_key",
+    "is_relationship_key",
+    "historical_max_similarity",
+    "historical_weighted_usage",
+    "historical_support_count",
+    "historical_operation_match",
+)
+
+
+class LightGBMSchemaReranker:
+    """Load a versioned LightGBM text model only when production enables it."""
+
+    def __init__(self, model_path: Path) -> None:
+        if not model_path.is_file():
+            raise FileNotFoundError(f"Schema reranker model not found: {model_path}")
+        try:
+            import lightgbm as lgb
+        except ImportError as exc:  # pragma: no cover - depends on optional production extra
+            raise RuntimeError("Install the 'ml' extra to enable the schema reranker.") from exc
+        self.model_path = model_path
+        self._model = lgb.Booster(model_file=str(model_path))
+        if self._model.num_feature() != len(RERANKER_FEATURES):
+            raise ValueError(
+                f"Reranker expects {self._model.num_feature()} features, "
+                f"but runtime supplies {len(RERANKER_FEATURES)}."
+            )
+
+    def score(self, features: list[list[float]]) -> list[float]:
+        values = self._model.predict(features)
+        return [float(value) for value in values]
+
+
 class FastEmbedEncoder:
     """Lazy local BGE encoder; no vector database or remote embedding API is used."""
 
-    def __init__(self, model_name: str = "BAAI/bge-small-en-v1.5") -> None:
+    def __init__(
+        self, model_name: str = "BAAI/bge-small-en-v1.5", *, cache_size: int = 20_000
+    ) -> None:
         self.model_name = model_name
         self._model: Any | None = None
+        self.cache_size = cache_size
+        self._cache: dict[str, list[float]] = {}
 
     def encode(self, texts: Sequence[str]) -> list[list[float]]:
         if self._model is None:
             from fastembed import TextEmbedding
 
             self._model = TextEmbedding(model_name=self.model_name)
-        return [list(map(float, vector)) for vector in self._model.embed(list(texts))]
+        missing = list(dict.fromkeys(text for text in texts if text not in self._cache))
+        if missing:
+            vectors = [list(map(float, vector)) for vector in self._model.embed(missing)]
+            for text, vector in zip(missing, vectors, strict=True):
+                self._cache[text] = vector
+            while len(self._cache) > self.cache_size:
+                self._cache.pop(next(iter(self._cache)))
+        return [self._cache[text] for text in texts]
 
 
 class HybridSchemaRetriever:
@@ -53,11 +109,15 @@ class HybridSchemaRetriever:
         rrf_k: int = 60,
         max_tables: int = 5,
         max_columns_per_table: int = 5,
+        reranker: SchemaCandidateReranker | None = None,
+        reranker_pool: int = 30,
     ) -> None:
         self.encoder = encoder
         self.rrf_k = rrf_k
         self.max_tables = max_tables
         self.max_columns_per_table = max_columns_per_table
+        self.reranker = reranker
+        self.reranker_pool = reranker_pool
 
     def retrieve(
         self,
@@ -66,6 +126,7 @@ class HybridSchemaRetriever:
         schema: SchemaInfo,
         profile: DatabaseProfile | None,
         glossary: BusinessGlossary | None,
+        historical_evidence: dict[str, dict[str, float]] | None = None,
     ) -> tuple[SchemaInfo, SchemaSelection, RetrievalTrace]:
         query = " ".join(value for value in (question, evidence or "") if value)
         profiles = {(item.table, item.column): item for item in profile.columns} if profile else {}
@@ -106,10 +167,35 @@ class HybridSchemaRetriever:
         value_ranks = _ranks(value_scores, positive_only=True)
         fused = _rrf((bm25_ranks, dense_ranks, value_ranks), self.rrf_k)
 
+        ml_scores: dict[str, float] = {}
+        if self.reranker is not None:
+            candidate_pool = sorted(fused, key=lambda key: (-fused[key], key))[: self.reranker_pool]
+            features = [
+                _reranker_features(
+                    identifier,
+                    schema,
+                    bm25_ranks,
+                    dense_ranks,
+                    value_ranks,
+                    fused,
+                    historical_evidence or {},
+                )
+                for identifier in candidate_pool
+            ]
+            try:
+                predicted = self.reranker.score(features)
+                if len(predicted) != len(candidate_pool):
+                    raise ValueError("Schema reranker returned the wrong number of scores.")
+                ml_scores = dict(zip(candidate_pool, predicted, strict=True))
+            except Exception:
+                # Retrieval must remain available when an optional ML artifact fails at runtime.
+                ml_scores = {}
+
         table_ids = set(table_docs)
         column_ids = set(column_docs)
+        # RRF table recall is the safety baseline; learned ranking is limited to columns.
         ranked_tables = _rank_ids(table_ids, fused)
-        ranked_columns = _rank_ids(column_ids, fused)
+        ranked_columns = _rank_ids(column_ids, fused, ml_scores)
         leading_table_score = fused.get(ranked_tables[0], 0.0) if ranked_tables else 0.0
         selected_tables = [
             item.removeprefix("table:")
@@ -182,6 +268,8 @@ class HybridSchemaRetriever:
             embedding_ranks=dense_ranks,
             value_match_ranks=value_ranks,
             rrf_scores={key: round(value, 8) for key, value in fused.items()},
+            ml_reranker_applied=bool(ml_scores),
+            ml_reranker_scores={key: round(value, 8) for key, value in ml_scores.items()},
             selected_tables=[table.name for table in reduced_tables],
             selected_columns=selected_columns,
             bridge_tables_added=bridge_tables,
@@ -345,8 +433,62 @@ def _rrf(rankings: Iterable[dict[str, int]], k: int) -> dict[str, float]:
     return scores
 
 
-def _rank_ids(identifiers: set[str], scores: dict[str, float]) -> list[str]:
-    return sorted(identifiers, key=lambda key: (-scores.get(key, 0.0), key))
+def _rank_ids(
+    identifiers: set[str], scores: dict[str, float], ml_scores: dict[str, float] | None = None
+) -> list[str]:
+    learned = ml_scores or {}
+    return sorted(
+        identifiers,
+        key=lambda key: (
+            0 if key in learned else 1,
+            -learned.get(key, 0.0),
+            -scores.get(key, 0.0),
+            key,
+        ),
+    )
+
+
+def _reranker_features(
+    identifier: str,
+    schema: SchemaInfo,
+    bm25_ranks: dict[str, int],
+    embedding_ranks: dict[str, int],
+    value_ranks: dict[str, int],
+    rrf_scores: dict[str, float],
+    historical_evidence: dict[str, dict[str, float]] | None = None,
+) -> list[float]:
+    primary_key = False
+    relationship_key = False
+    if identifier.startswith("column:"):
+        qualified = identifier.removeprefix("column:")
+        table_name, column_name = qualified.split(".", 1)
+        table = next((item for item in schema.tables if item.name == table_name), None)
+        column = (
+            next((item for item in table.columns if item.name == column_name), None)
+            if table
+            else None
+        )
+        primary_key = bool(column and column.primary_key)
+        relationship_key = column_name in _relationship_columns(table_name, schema)
+
+    def reciprocal(ranking: dict[str, int]) -> float:
+        rank = ranking.get(identifier)
+        return 1.0 / rank if rank else 0.0
+
+    history = (historical_evidence or {}).get(identifier, {})
+    return [
+        reciprocal(bm25_ranks),
+        reciprocal(embedding_ranks),
+        reciprocal(value_ranks),
+        rrf_scores.get(identifier, 0.0),
+        float(identifier.startswith("table:")),
+        float(primary_key),
+        float(relationship_key),
+        history.get("max_similarity", 0.0),
+        history.get("weighted_usage", 0.0),
+        min(history.get("support_count", 0.0) / 3.0, 1.0),
+        history.get("operation_match", 0.0),
+    ]
 
 
 def _cosine(left: Sequence[float], right: Sequence[float]) -> float:

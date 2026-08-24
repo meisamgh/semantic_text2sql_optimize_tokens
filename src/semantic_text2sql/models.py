@@ -372,7 +372,6 @@ class VerifiedColumn(StrictModel):
     allowed_values: list[str] = Field(default_factory=list, max_length=5)
     minimum: str | None = None
     maximum: str | None = None
-    safe_date_operations: list[str] = Field(default_factory=list)
 
 
 class VerifiedTable(StrictModel):
@@ -485,6 +484,8 @@ class RetrievalTrace(StrictModel):
     embedding_ranks: dict[str, int] = Field(default_factory=dict)
     value_match_ranks: dict[str, int] = Field(default_factory=dict)
     rrf_scores: dict[str, float] = Field(default_factory=dict)
+    ml_reranker_applied: bool = False
+    ml_reranker_scores: dict[str, float] = Field(default_factory=dict)
     selected_tables: list[str] = Field(default_factory=list)
     selected_columns: dict[str, list[str]] = Field(default_factory=dict)
     bridge_tables_added: list[str] = Field(default_factory=list)
@@ -513,8 +514,8 @@ class PipelineTelemetry(StrictModel):
     metadata_request_count: int = Field(default=0, ge=0)
     historical_attempted: bool = False
     historical_candidates_retrieved: int | None = Field(default=None, ge=0)
-    historical_examples_admitted: int = Field(default=0, ge=0, le=2)
-    historical_similarity_scores: list[float] = Field(default_factory=list, max_length=2)
+    historical_examples_admitted: int = Field(default=0, ge=0, le=1)
+    historical_similarity_scores: list[float] = Field(default_factory=list, max_length=1)
     retrieval_mode: Literal["hybrid"] = "hybrid"
     retrieval: RetrievalTrace | None = None
 

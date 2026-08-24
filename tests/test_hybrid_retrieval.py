@@ -26,6 +26,16 @@ class KeywordEncoder:
         return [[float(text.casefold().count(token)) for token in vocabulary] for text in texts]
 
 
+class FixedReranker:
+    def score(self, features: list[list[float]]) -> list[float]:
+        return [float(index) for index, _ in enumerate(features)]
+
+
+class BrokenReranker:
+    def score(self, features: list[list[float]]) -> list[float]:
+        raise RuntimeError("artifact failure")
+
+
 def _column_profile(
     table: str,
     column: str,
@@ -133,6 +143,28 @@ def test_hybrid_retrieval_fuses_rankings_and_preserves_keys() -> None:
     assert trace.rrf_scores
 
 
+def test_optional_ml_reranker_scores_rrf_pool_before_key_restoration() -> None:
+    retriever = HybridSchemaRetriever(
+        KeywordEncoder(), reranker=FixedReranker(), max_tables=2, max_columns_per_table=2
+    )
+    _, selection, trace = retriever.retrieve(
+        "EUR customer order amount", None, _schema(), _profile(), None
+    )
+
+    assert trace.ml_reranker_applied is True
+    assert trace.ml_reranker_scores
+    assert "customer_id" in selection.columns["customers"]
+    assert "customer_id" in selection.columns["orders"]
+
+
+def test_ml_reranker_failure_falls_back_to_rrf() -> None:
+    retriever = HybridSchemaRetriever(KeywordEncoder(), reranker=BrokenReranker())
+    _, _, trace = retriever.retrieve("customer currency", None, _schema(), _profile(), None)
+
+    assert trace.ml_reranker_applied is False
+    assert trace.ml_reranker_scores == {}
+
+
 def test_glossary_dependencies_and_bridge_tables_are_restored() -> None:
     schema = _schema()
     bridge = TableInfo(
@@ -219,8 +251,10 @@ def test_grounding_propagates_grain_null_text_and_date_metadata() -> None:
     assert currency["top_values"] == ["EUR", "CZK"]
     date = payload["tables"]["orders"]["columns"]["order_date"]
     assert date["observed_format"] == "YYYY-MM-DD"
-    assert date["minimum"] == "2026-01-04"
-    assert date["safe_date_operations"]
+    assert "examples" not in date
+    assert "minimum" not in date
+    assert "maximum" not in date
+    assert "safe_date_operations" not in date
     assert payload["tables"]["orders"]["columns"]["amount"]["maximum"] == "500.0"
 
 

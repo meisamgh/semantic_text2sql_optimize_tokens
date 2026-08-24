@@ -219,11 +219,7 @@ def _verified_context(
     )
     relationship_keys: dict[str, list[str]] = {}
     live_columns = (
-        {
-            (table.name, column.name): column
-            for table in schema.tables
-            for column in table.columns
-        }
+        {(table.name, column.name): column for table in schema.tables for column in table.columns}
         if schema
         else {}
     )
@@ -311,10 +307,6 @@ def _execution_column(
         top_values = [str(item.value) for item in profile.top_values[:5]]
         allowed_values = [str(value) for value in profile.allowed_values[:5]]
         examples = [str(value) for value in profile.examples[:5]]
-    elif include_format:
-        observed = [item.value for item in profile.top_values]
-        observed.extend(profile.examples)
-        examples = [str(value) for value in dict.fromkeys(observed)][:5]
     return VerifiedColumn(
         type=profile.database_type,
         semantic_type=profile.semantic_type,
@@ -324,24 +316,9 @@ def _execution_column(
         examples=examples,
         top_values=top_values,
         allowed_values=allowed_values,
-        minimum=profile.minimum if include_format or include_numeric_range else None,
-        maximum=profile.maximum if include_format or include_numeric_range else None,
-        safe_date_operations=(
-            _safe_date_operations(profile.observed_format) if include_format else []
-        ),
+        minimum=profile.minimum if include_numeric_range else None,
+        maximum=profile.maximum if include_numeric_range else None,
     )
-
-
-def _safe_date_operations(observed_format: str | None) -> list[str]:
-    if observed_format == "YYYYMM":
-        return ["SUBSTR(column, 1, 4) for year", "SUBSTR(column, 5, 2) for month"]
-    if observed_format == "YYYY-MM-DD":
-        return ["date(column)", "strftime('%Y', column)", "strftime('%m', column)"]
-    if observed_format and "epoch" in observed_format.casefold():
-        return ["datetime(column, 'unixepoch')"]
-    if observed_format:
-        return ["Use only operations compatible with the observed format"]
-    return []
 
 
 def failure_context_category(code: str) -> str | None:
@@ -364,9 +341,7 @@ def reactive_context(category: str, schema: SchemaInfo, profile: DatabaseProfile
             continue
         prefix = f"{item.table}.{item.column}"
         if category == "DATE_FORMAT_UNKNOWN" and item.observed_format:
-            facts.append(
-                f"{prefix}: format={item.observed_format}; min={item.minimum}; max={item.maximum}"
-            )
+            facts.append(f"{prefix}: format={item.observed_format}")
         elif category == "UNKNOWN_CATEGORY" and item.top_values:
             facts.append(f"{prefix}: top_values={[value.value for value in item.top_values[:5]]}")
         elif category == "FORMULA_UNKNOWN" and item.description:

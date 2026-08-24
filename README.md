@@ -2,9 +2,8 @@
 
 A token-efficient, local-first conversational Text-to-SQL application. Deterministic hybrid schema
 retrieval and metadata grounding build a compact context before the SQL-generation model is called.
-
-The project is inspired by public Text-to-SQL patterns, including Uber QueryGPT, but does not copy
-private prompts, schemas, code, or data.
+The implementation is organized around its own retrieval, grounding, validation, execution, and
+evaluation contracts.
 
 ## Current architecture
 
@@ -19,11 +18,15 @@ BM25 + local dense embeddings + profiled value matching
     |  independent rankings fused with Reciprocal Rank Fusion (RRF)
     v
 Ranked tables and columns
+    |  optional LightGBM reranking of the RRF candidate pool
     |  preserve PK/FK and glossary dependencies; add FK bridge tables
     v
 Deterministic verified grounding
     |  keys, grain, cardinality, types, NULL presence,
     |  categorical examples and mandatory selected-date formats
+    v
+Optional strong historical match (0 or 1 validated example)
+    |
     v
 Model 2: SQL-only generator
     |
@@ -54,6 +57,47 @@ restores primary keys, relationship keys, glossary formula dependencies, and nec
 The dense model is downloaded locally on first use; no vector database or remote embedding service is
 used.
 
+### Production ML schema reranker
+
+A versioned LightGBM learning-to-rank model can reorder only the RRF candidate pool. It cannot add
+schema objects or metadata, and deterministic key/formula/bridge restoration still runs after it.
+If the artifact is absent, incompatible, or fails during inference, retrieval falls back to RRF.
+The production configuration enables it with `TEXT2SQL_SCHEMA_RERANKER_ENABLED=true`; install the
+runtime dependency with `uv sync --extra ml`.
+Its features include BM25, embedding, value-match and RRF ranks, key roles, plus similarity-weighted
+table/column usage from up to three compatible successful historical queries. These internal
+historical signals do not cause SQL to be copied into the prompt.
+
+Production behavior is deliberately fail-safe:
+
+- The model artifact is loaded once during API startup, not once per request.
+- Feature order is frozen and versioned with the artifact.
+- Inference is restricted to candidates already retrieved by BM25, embeddings, values, and RRF.
+- Deterministic PK/FK, formula-dependency, and bridge restoration runs after ML scoring.
+- A missing or incompatible artifact logs a warning and automatically falls back to RRF.
+- Retrieval telemetry records ML scores and the final selected schema for operational diagnosis.
+
+The bundled v1 artifact was trained on 290 questions from the leakage-screened 399-record BIRD
+history corpus and evaluated on a fixed 69-question holdout (seed 42); 40 records with SQL that
+could not be reliably mapped to live schema labels were skipped. The protected 100-question test
+split was not used. Historical features for holdout questions come only from the training partition,
+and training questions exclude themselves. RRF continues to rank tables because that preserves
+held-out table recall; ML reranks columns only:
+
+| Held-out retrieval metric | RRF | RRF tables + ML columns |
+|---|---:|---:|
+| Exact gold-table recall at 5 | 85.51% | 85.51% |
+| Mean gold-column recall at 5 per selected table | 74.84% | 83.68% |
+
+These are retrieval metrics, not SQL execution accuracy. Reproduce training with:
+
+```bash
+uv sync --extra ml
+uv run python scripts/train_schema_reranker.py \
+  --database-root /path/to/BIRD/dev_databases \
+  --output models/schema_reranker/v1/model.txt
+```
+
 ### Deterministic grounding
 
 After retrieval, deterministic code verifies identifiers and adds required database
@@ -65,8 +109,7 @@ facts:
 - `observed_nulls`: whether profiling found any SQL `NULL`
 - Up to five observed `top_values`, `allowed_values`, and examples for selected text/categorical
   columns
-- Mandatory `observed_format`, useful examples, min/max dates, and safe operations for every selected
-  date/datetime column
+- Mandatory `observed_format` only for every selected date/datetime column
 - Numeric min/max only when the question contains a numeric threshold/range intent
 - Directly matched, approved business definitions
 
@@ -105,7 +148,10 @@ the conversational interface.
 ### Model 2: SQL generator
 
 Model 2 receives the question, dialect, selected live schema, verified context, optional trusted
-evidence, and focused repair information after a failure. It returns one SQL statement only:
+evidence, at most one strongly matched validated historical query, and focused repair information
+after a failure. Historical retrieval is same-database and fail-closed at the configured threshold;
+no example is the normal result when a strong analogue is unavailable. Model 2 returns one SQL
+statement only:
 
 ```sql
 SELECT COUNT(*) AS customer_count
@@ -292,9 +338,13 @@ Important environment variables:
 | `TEXT2SQL_EMBEDDING_MODEL` | Local FastEmbed model | `BAAI/bge-small-en-v1.5` |
 | `TEXT2SQL_RETRIEVAL_TABLES` | High-recall table budget before bridge expansion | `5` |
 | `TEXT2SQL_RETRIEVAL_COLUMNS` | Approximate columns per table before dependency restoration | `5` |
+| `TEXT2SQL_SCHEMA_RERANKER_ENABLED` | Enable production LightGBM reranking after RRF | `true` in `.env.example` |
+| `TEXT2SQL_SCHEMA_RERANKER_MODEL` | Versioned LightGBM text-model artifact | `models/schema_reranker/v1/model.txt` |
+| `TEXT2SQL_SCHEMA_RERANKER_POOL` | Maximum RRF candidates sent to the ML reranker | `30` |
 | `TEXT2SQL_SQL_MODEL` | Optional Model 2 override | selected model |
-| `TEXT2SQL_HISTORY_ENABLED` | Enable historical examples | `false` |
+| `TEXT2SQL_HISTORY_ENABLED` | Enable one strong, validated historical example | `true` |
 | `TEXT2SQL_HISTORY_MIN_SCORE` | Minimum historical score | `0.85` |
+| `TEXT2SQL_HISTORY_ML_MIN_SCORE` | Minimum match used as an internal ML schema feature | `0.65` |
 
 ## Verification
 
@@ -340,6 +390,10 @@ web/
 scripts/
   create_demo_db.py
   profile_database.py
+  train_schema_reranker.py
+models/schema_reranker/v1/
+  model.txt          versioned production LightGBM artifact
+  metrics.json       frozen training and holdout retrieval metrics
 benchmarks/
   evaluate_bird.py
   build_bird_history.py
