@@ -8,42 +8,60 @@ evaluation contracts.
 ## Current architecture
 
 ```text
-User question
-    |
-    v
-Conversation resolver
-    |
-    v
-BM25 + local dense embeddings + profiled value matching
-    |  independent rankings fused with Reciprocal Rank Fusion (RRF)
-    v
-Ranked tables and columns
-    |  optional LightGBM reranking of the RRF candidate pool
-    |  preserve PK/FK and glossary dependencies; add FK bridge tables
-    v
-Deterministic verified grounding
-    |  keys, grain, cardinality, types, NULL presence,
-    |  categorical examples and mandatory selected-date formats
-    v
-Optional strong historical match (0 or 1 validated example)
-    |
-    v
-Model 2: SQL-only generator
-    |
-    v
-SQLGlot syntax and read-only safety validation
-    |
-    v
-Read-only execution
-    |
-    +-- failure --> focused SQL repair, maximum 3 attempts
-    |
-    v
-Final SQL, result, context JSON, and attempt history
+              User Question
+                   |
+                   v
+          Conversation Resolver
+                   |
+                   v
+         Trusted Evidence Merge
+                   |
+                   v
+   +---- Hybrid Schema Retrieval ----+
+   | BM25                             |
+   | Dense embeddings                 |
+   | Value matching                   |
+   | Reciprocal Rank Fusion (RRF)     |
+   | Production LightGBM reranking    |
+   +---------------+------------------+
+                   |
+                   v
+         Dependency Restoration
+      PK / FK / formulas / bridges
+                   |
+                   v
+          Verified Context
+     + exact selected tables
+     + exact selected columns
+     + physical types
+     + date formats
+     + grain and cardinality
+     + exact glossary concepts
+                   |
+                   v
+              SQL Model
+          reasoning and generation
+                   |
+                   v
+         Thin SQLGlot Safety
+                   |
+                   v
+          Read-only Execution
+             |             |
+          success        failure
+             |             |
+             |       focused repair
+             |         max 3 tries
+             |             |
+             +------+------+
+                    |
+                    v
+        Final SQL, result, context,
+           and attempt history
 ```
 
 The web application has one model selector. The selected model performs SQL reasoning, generation,
-and focused repair. No LLM is called for schema selection or metadata selection.
+and focused repair.
 
 ## Model responsibilities
 
