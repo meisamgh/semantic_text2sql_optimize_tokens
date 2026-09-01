@@ -6,7 +6,7 @@ The implementation is organized around its own retrieval, grounding, validation,
 evaluation contracts.
 
 <p align="center">
-  <img src="docs/semantic_text2sql_architecture.svg" alt="Semantic Text-to-SQL Optimize Tokens architecture" width="760">
+  <img src="docs/semantic_text2sql_architecture.jpg" alt="Semantic Text-to-SQL Optimize Tokens architecture" width="760">
 </p>
 
 ## Current architecture
@@ -355,7 +355,7 @@ Important environment variables:
 | `OLLAMA_BASE_URL` | Ollama endpoint | `http://127.0.0.1:11434` |
 | `AGENTROUTER_API_KEY` | AgentRouter token | unset |
 | `AGENTROUTER_BASE_URL` | AgentRouter gateway | `https://agentrouter.org` |
-| `GROQ_API_KEY` | Groq API token | unset |
+| `GROQ_API_KEY` | Groq API key | unset |
 | `GROQ_BASE_URL` | Groq OpenAI-compatible endpoint | `https://api.groq.com/openai/v1` |
 | `TEXT2SQL_EMBEDDING_MODEL` | Local FastEmbed model | `BAAI/bge-small-en-v1.5` |
 | `TEXT2SQL_RETRIEVAL_TABLES` | High-recall table budget before bridge expansion | `5` |
