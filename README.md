@@ -5,6 +5,10 @@ retrieval and metadata grounding build a compact context before the SQL-generati
 The implementation is organized around its own retrieval, grounding, validation, execution, and
 evaluation contracts.
 
+<p align="center">
+  <img src="docs/semantic_text2sql_architecture.svg" alt="Semantic Text-to-SQL Optimize Tokens architecture" width="760">
+</p>
+
 ## Current architecture
 
 ```text
