@@ -6,8 +6,11 @@ The implementation is organized around its own retrieval, grounding, validation,
 evaluation contracts.
 
 <p align="center">
-  <img src="docs/semantic_text2sql_architecture.jpg" alt="Semantic Text-to-SQL Optimize Tokens architecture" width="760">
+  <img src="docs/assets/text-to-sql-architecture.png" alt="Semantic Text-to-SQL architecture" width="1000">
 </p>
+
+_Visual overview of the query workflow. The detailed architecture and validation boundaries below
+are authoritative._
 
 ## Current architecture
 
