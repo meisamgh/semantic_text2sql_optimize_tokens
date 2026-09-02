@@ -289,7 +289,6 @@ async function send(message, feedbackCategory = null) {
         session_id: sessionId,
         db_id: $("#databaseSelect").value,
         message: message.trim(),
-        evidence: $("#evidenceInput").value.trim() || null,
         provider,
         model,
         execute: true,
