@@ -14,9 +14,13 @@ are authoritative._
 
 ## Demo
 
-<a href="https://raw.githubusercontent.com/meisamgh/semantic_text2sql_optimize_tokens/main/assets/linkedin_text_to_sql_demo_compatible.mp4">
-  <img src="assets/linkedin_text_to_sql_demo_preview.jpg" alt="Watch the Semantic Text-to-SQL demo" width="100%">
-</a>
+<p align="center">
+  <a href="https://raw.githubusercontent.com/meisamgh/semantic_text2sql_optimize_tokens/main/assets/linkedin_text_to_sql_demo_compatible.mp4">
+    <img src="assets/linkedin_text_to_sql_demo_preview.jpg" alt="Click to watch the Semantic Text-to-SQL demo" width="100%">
+  </a>
+</p>
+
+[Click to watch the full Text-to-SQL demo](https://raw.githubusercontent.com/meisamgh/semantic_text2sql_optimize_tokens/main/assets/linkedin_text_to_sql_demo_compatible.mp4)
 
 <video controls width="100%" preload="metadata">
   <source src="https://raw.githubusercontent.com/meisamgh/semantic_text2sql_optimize_tokens/main/assets/linkedin_text_to_sql_demo_compatible.mp4" type="video/mp4">
