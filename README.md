@@ -14,61 +14,64 @@ are authoritative._
 
 ## Demo
 
-[Watch the Text-to-SQL demo on GitHub](https://github.com/meisamgh/semantic_text2sql_optimize_tokens/issues/1)
+<video controls width="100%" preload="metadata">
+  <source src="https://github.com/user-attachments/assets/ac593a9c-802f-44c7-875d-02c9b4e0ca1f" type="video/mp4">
+  Your browser doesn't support HTML5 video. <a href="https://github.com/user-attachments/assets/ac593a9c-802f-44c7-875d-02c9b4e0ca1f">Download the video</a>
+</video>
 
 ## Current architecture
 
 ```text
-              User Question
-                   |
-                   v
-          Conversation Resolver
-                   |
-                   v
-         Trusted Evidence Merge
-                   |
-                   v
-   +---- Hybrid Schema Retrieval ----+
-   | BM25                             |
-   | Dense embeddings                 |
-   | Value matching                   |
-   | Reciprocal Rank Fusion (RRF)     |
-   | Production LightGBM reranking    |
-   +---------------+------------------+
-                   |
-                   v
-         Dependency Restoration
-      PK / FK / formulas / bridges
-                   |
-                   v
-          Verified Context
-     + exact selected tables
-     + exact selected columns
-     + physical types
-     + date formats
-     + grain and cardinality
-     + exact glossary concepts
-                   |
-                   v
-              SQL Model
-          reasoning and generation
-                   |
-                   v
-         Thin SQLGlot Safety
-                   |
-                   v
-          Read-only Execution
-             |             |
-          success        failure
-             |             |
-             |       focused repair
-             |         max 3 tries
-             |             |
-             +------+------+
+               User Question
                     |
                     v
-        Final SQL, result, context,
-           and attempt history
+           Conversation Resolver
+                    |
+                    v
+          Trusted Evidence Merge
+                    |
+                    v
+    +---- Hybrid Schema Retrieval ----+
+    | BM25                             |
+    | Dense embeddings                 |
+    | Value matching                   |
+    | Reciprocal Rank Fusion (RRF)     |
+    | Production LightGBM reranking    |
+    +---------------+------------------+
+                    |
+                    v
+          Dependency Restoration
+       PK / FK / formulas / bridges
+                    |
+                    v
+           Verified Context
+      + exact selected tables
+      + exact selected columns
+      + physical types
+      + date formats
+      + grain and cardinality
+      + exact glossary concepts
+                    |
+                    v
+               SQL Model
+           reasoning and generation
+                    |
+                    v
+          Thin SQLGlot Safety
+                    |
+                    v
+           Read-only Execution
+              |             |
+           success        failure
+              |             |
+              |       focused repair
+              |         max 3 tries
+              |             |
+              +------+------+
+                     |
+                     v
+         Final SQL, result, context,
+            and attempt history
 ```
 
 The web application has one model selector. The selected model performs SQL reasoning, generation,
