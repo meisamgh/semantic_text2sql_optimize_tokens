@@ -15,16 +15,16 @@ are authoritative._
 ## Demo
 
 <p align="center">
-  <a href="https://raw.githubusercontent.com/meisamgh/semantic_text2sql_optimize_tokens/main/assets/linkedin_text_to_sql_demo_compatible.mp4">
+  <a href="https://github.com/user-attachments/assets/ac593a9c-802f-44c7-875d-02c9b4e0ca1f">
     <img src="assets/linkedin_text_to_sql_demo_preview.jpg" alt="Click to watch the Semantic Text-to-SQL demo" width="100%">
   </a>
 </p>
 
-[Click to watch the full Text-to-SQL demo](https://raw.githubusercontent.com/meisamgh/semantic_text2sql_optimize_tokens/main/assets/linkedin_text_to_sql_demo_compatible.mp4)
+[Click to watch the full Text-to-SQL demo](https://github.com/user-attachments/assets/ac593a9c-802f-44c7-875d-02c9b4e0ca1f)
 
 <video controls width="100%" preload="metadata">
-  <source src="https://raw.githubusercontent.com/meisamgh/semantic_text2sql_optimize_tokens/main/assets/linkedin_text_to_sql_demo_compatible.mp4" type="video/mp4">
-  <a href="https://raw.githubusercontent.com/meisamgh/semantic_text2sql_optimize_tokens/main/assets/linkedin_text_to_sql_demo_compatible.mp4">Watch the Text-to-SQL demo</a>
+  <source src="https://github.com/user-attachments/assets/ac593a9c-802f-44c7-875d-02c9b4e0ca1f" type="video/mp4">
+  <a href="https://github.com/user-attachments/assets/ac593a9c-802f-44c7-875d-02c9b4e0ca1f">Watch the Text-to-SQL demo</a>
 </video>
 
 ## Current architecture
