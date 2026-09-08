@@ -12,6 +12,12 @@ evaluation contracts.
 _Visual overview of the query workflow. The detailed architecture and validation boundaries below
 are authoritative._
 
+## Demo
+
+<video controls width="100%" src="assets/linkedin_text_to_sql_demo_compatible.mp4">
+  <a href="assets/linkedin_text_to_sql_demo_compatible.mp4">Watch the Text-to-SQL demo</a>
+</video>
+
 ## Current architecture
 
 ```text
