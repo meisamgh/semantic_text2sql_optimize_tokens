@@ -14,10 +14,7 @@ are authoritative._
 
 ## Demo
 
-<video controls width="100%" preload="metadata">
-  <source src="https://github.com/user-attachments/assets/ac593a9c-802f-44c7-875d-02c9b4e0ca1f" type="video/mp4">
-  Your browser doesn't support HTML5 video. <a href="https://github.com/user-attachments/assets/ac593a9c-802f-44c7-875d-02c9b4e0ca1f">Download the video</a>
-</video>
+**[Watch the demo video](https://github.com/meisamgh/semantic_text2sql_optimize_tokens/issues/1)**
 
 ## Current architecture
 
